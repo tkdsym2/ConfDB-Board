@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="bulb" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#FBBF24" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.05" stroke="#94A3B8" stroke-width="1">
+    <line x1="0" y1="0" x2="0" y2="630"/><line x1="60" y1="0" x2="60" y2="630"/>
+    <line x1="120" y1="0" x2="120" y2="630"/><line x1="180" y1="0" x2="180" y2="630"/>
+    <line x1="240" y1="0" x2="240" y2="630"/><line x1="300" y1="0" x2="300" y2="630"/>
+    <line x1="360" y1="0" x2="360" y2="630"/><line x1="420" y1="0" x2="420" y2="630"/>
+    <line x1="480" y1="0" x2="480" y2="630"/><line x1="540" y1="0" x2="540" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/><line x1="660" y1="0" x2="660" y2="630"/>
+    <line x1="720" y1="0" x2="720" y2="630"/><line x1="780" y1="0" x2="780" y2="630"/>
+    <line x1="840" y1="0" x2="840" y2="630"/><line x1="900" y1="0" x2="900" y2="630"/>
+    <line x1="960" y1="0" x2="960" y2="630"/><line x1="1020" y1="0" x2="1020" y2="630"/>
+    <line x1="1080" y1="0" x2="1080" y2="630"/><line x1="1140" y1="0" x2="1140" y2="630"/>
+    <line x1="0" y1="60" x2="1200" y2="60"/><line x1="0" y1="120" x2="1200" y2="120"/>
+    <line x1="0" y1="180" x2="1200" y2="180"/><line x1="0" y1="240" x2="1200" y2="240"/>
+    <line x1="0" y1="300" x2="1200" y2="300"/><line x1="0" y1="360" x2="1200" y2="360"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/><line x1="0" y1="480" x2="1200" y2="480"/>
+    <line x1="0" y1="540" x2="1200" y2="540"/>
+  </g>
+
+  <!-- Accent bar top -->
+  <rect width="1200" height="4" fill="url(#accent)"/>
+
+  <!-- Lightbulb icon -->
+  <g transform="translate(100, 180)">
+    <circle cx="60" cy="40" r="55" fill="url(#glow)"/>
+    <path d="M60 8C40.12 8 24 24.12 24 44c0 13.26 7.16 24.84 17.84 31.12C43.6 76.5 45 79.86 45 83v4h30v-4c0-3.14 1.4-6.5 3.16-7.88C88.84 68.84 96 57.26 96 44c0-19.88-16.12-36-36-36z" fill="url(#bulb)"/>
+    <path d="M52 62c0-5 3-8 8-8s8 3 8 8" stroke="#92400E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <line x1="60" y1="54" x2="60" y2="38" stroke="#92400E" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="45" y="87" width="30" height="5" rx="2" fill="#9CA3AF"/>
+    <rect x="47" y="92" width="26" height="5" rx="2" fill="#6B7280"/>
+    <rect x="49" y="97" width="22" height="5" rx="2" fill="#9CA3AF"/>
+    <path d="M53 102h14v5a7 7 0 01-14 0v-5z" fill="#6B7280"/>
+  </g>
+
+  <!-- Title text -->
+  <text x="280" y="240" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="bold" fill="#F8FAFC">Confidence Database</text>
+  <text x="280" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="bold" fill="#F8FAFC">Board</text>
+
+  <!-- Description -->
+  <text x="280" y="370" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#94A3B8">Explore and analyze 180 behavioral datasets</text>
+  <text x="280" y="402" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#94A3B8">from the Confidence Database in your browser.</text>
+
+  <!-- Stats badges -->
+  <g transform="translate(280, 440)">
+    <rect width="160" height="40" rx="8" fill="#1E3A5F" opacity="0.8"/>
+    <text x="80" y="26" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#60A5FA" text-anchor="middle">180 Datasets</text>
+  </g>
+  <g transform="translate(460, 440)">
+    <rect width="220" height="40" rx="8" fill="#1E3A5F" opacity="0.8"/>
+    <text x="110" y="26" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#60A5FA" text-anchor="middle">11,653 Participants</text>
+  </g>
+  <g transform="translate(700, 440)">
+    <rect width="180" height="40" rx="8" fill="#1E3A5F" opacity="0.8"/>
+    <text x="90" y="26" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#60A5FA" text-anchor="middle">5.3M Trials</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="280" y="560" font-family="system-ui, sans-serif" font-size="18" fill="#64748B">Powered by Pyodide &middot; Rahnev et al., 2020</text>
+</svg>

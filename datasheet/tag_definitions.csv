@@ -1,0 +1,15 @@
+tag_id,name,category,sort_order
+accuracy,Accuracy,basic,0
+mean_confidence,Mean Confidence,basic,1
+mean_rt,Mean RT,basic,2
+dprime,d',sdt,3
+criterion,criterion (c),sdt,4
+confidence_accuracy,Confidence-Accuracy,metacognition,5
+type2_roc,Type 2 ROC,metacognition,6
+type2_auc,Type 2 AUC,metacognition,7
+meta_d_mle,meta-d' (MLE),metacognition,8
+m_ratio,M-ratio,metacognition,9
+estimation_error,Estimation Error,metacognition,10
+confidence_error,Confidence-Error,metacognition,11
+rt_distribution,RT Distribution,rt,12
+confidence_rt,Confidence RT,rt,13

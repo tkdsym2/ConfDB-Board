@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bulb" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#FBBF24" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Glow -->
+  <circle cx="32" cy="24" r="22" fill="url(#glow)"/>
+  <!-- Bulb glass -->
+  <path d="M32 4C22.06 4 14 12.06 14 22c0 6.63 3.58 12.42 8.92 15.56C24.3 38.5 25 40.18 25 42v2h14v-2c0-1.82.7-3.5 2.08-4.44C46.42 34.42 50 28.63 50 22c0-9.94-8.06-18-18-18z" fill="url(#bulb)"/>
+  <!-- Filament -->
+  <path d="M28 30c0-2.5 1.5-4 4-4s4 1.5 4 4" stroke="#92400E" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <line x1="32" y1="26" x2="32" y2="18" stroke="#92400E" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Base -->
+  <rect x="25" y="44" width="14" height="3" rx="1" fill="#9CA3AF"/>
+  <rect x="26" y="47" width="12" height="3" rx="1" fill="#6B7280"/>
+  <rect x="27" y="50" width="10" height="3" rx="1" fill="#9CA3AF"/>
+  <!-- Contact -->
+  <path d="M29 53h6v3a3 3 0 01-6 0v-3z" fill="#6B7280"/>
+</svg>

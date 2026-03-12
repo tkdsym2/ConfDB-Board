@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# others
+.env
+.env.example
+conf_db_data/
+datasheet/analysis_report.txt
+datasheet/main.py
