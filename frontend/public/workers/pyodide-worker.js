@@ -73,6 +73,44 @@ for role, col_name in data.columns.items():
 
   const shape = pyodide.runPython('str(df.shape)')
   postMessage({ type: 'stdout', text: `Dataset loaded: df.shape = ${shape}\n` })
+
+  // Capture baseline globals for user variable tracking
+  await pyodide.runPythonAsync(`
+__baseline_globals__ = set(globals().keys())
+__baseline_globals__.add('__baseline_globals__')
+`)
+
+  postMessage({ type: 'status', status: 'ready' })
+}
+
+async function loadExtraDataset(csvUrl, dfVar, dataVar) {
+  postMessage({ type: 'status', status: 'loading', message: `Loading into ${dfVar}...` })
+
+  const response = await fetch(csvUrl)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch CSV: ${response.status} ${response.statusText}`)
+  }
+  const csvText = await response.text()
+
+  pyodide.globals.set('__csv_text__', csvText)
+  pyodide.globals.set('__df_var__', dfVar)
+  pyodide.globals.set('__data_var__', dataVar)
+  await pyodide.runPythonAsync(`
+import pandas as pd
+from io import StringIO
+globals()[__df_var__] = pd.read_csv(StringIO(__csv_text__))
+globals()[__data_var__] = conf.load(globals()[__df_var__])
+_shape = globals()[__df_var__].shape
+_data = globals()[__data_var__]
+print(f"{__df_var__}: shape={_shape}")
+print(f"{__data_var__}: detected columns:")
+for role, col_name in _data.columns.items():
+    if col_name:
+        print(f"  {role:18s} -> {col_name}")
+del __csv_text__, __df_var__, __data_var__, _shape, _data
+`)
+
+  postMessage({ type: 'stdout', text: `Extra dataset loaded as ${dfVar} / ${dataVar}\n` })
   postMessage({ type: 'status', status: 'ready' })
 }
 
@@ -191,6 +229,43 @@ len(__plot_results__)
     // matplotlib not used or not imported — ignore
   }
 
+  // Collect user-defined globals
+  try {
+    const userVarsJson = pyodide.runPython(`
+import json as _json, types as _types
+_uv = []
+if '__baseline_globals__' in globals():
+    for _n in sorted(globals().keys()):
+        if _n.startswith('_') or _n in __baseline_globals__:
+            continue
+        _v = globals()[_n]
+        if isinstance(_v, _types.ModuleType):
+            continue
+        _t = type(_v).__name__
+        if hasattr(_v, 'shape'):
+            _r = f"shape={_v.shape}"
+        elif isinstance(_v, (list, dict, set, tuple)):
+            _r = f"len={len(_v)}"
+        elif isinstance(_v, (int, float, bool, type(None))):
+            _r = repr(_v)
+        elif isinstance(_v, str):
+            _s = repr(_v)
+            _r = _s if len(_s) <= 50 else _s[:47] + "...'"
+        else:
+            try:
+                _r = repr(_v)
+                if len(_r) > 60:
+                    _r = _r[:57] + '...'
+            except:
+                _r = _t
+        _uv.append({'name': _n, 'type': _t, 'repr': _r})
+_json.dumps(_uv)
+`)
+    postMessage({ type: 'globals', variables: JSON.parse(userVarsJson) })
+  } catch (_) {
+    // ignore errors in globals collection
+  }
+
   postMessage({ type: 'result', success })
   postMessage({ type: 'status', status: 'ready' })
 }
@@ -203,6 +278,8 @@ onmessage = async function (e) {
       await initPyodide()
     } else if (type === 'load-dataset') {
       await loadDataset(e.data.csvUrl)
+    } else if (type === 'load-extra-dataset') {
+      await loadExtraDataset(e.data.csvUrl, e.data.dfVar, e.data.dataVar)
     } else if (type === 'reload-conf') {
       await pyodide.runPythonAsync(e.data.code)
       postMessage({ type: 'status', status: 'ready' })

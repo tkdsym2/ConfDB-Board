@@ -5,6 +5,7 @@ export function useEngine() {
   const [status, setStatus] = useState('idle') // idle | loading | ready | running
   const [statusMessage, setStatusMessage] = useState('')
   const [output, setOutput] = useState([])
+  const [userGlobals, setUserGlobals] = useState([])
 
   // Resolves when current operation completes
   const pendingRef = useRef(null)
@@ -35,6 +36,8 @@ export function useEngine() {
       setOutput((prev) => [...prev, { type: 'stderr', text: msg.text }])
     } else if (msg.type === 'plot') {
       setOutput((prev) => [...prev, { type: 'plot', data: msg.data }])
+    } else if (msg.type === 'globals') {
+      setUserGlobals(msg.variables)
     } else if (msg.type === 'result') {
       setOutput((prev) => [...prev, { type: 'result', success: msg.success }])
     }
@@ -74,6 +77,16 @@ export function useEngine() {
     await waitForReady()
   }, [waitForReady])
 
+  const loadExtraDataset = useCallback(async (csvUrl, dfVar, dataVar) => {
+    if (!workerRef.current) throw new Error('Engine not initialized')
+
+    setStatus('loading')
+    setStatusMessage(`Loading into ${dfVar}...`)
+
+    workerRef.current.postMessage({ type: 'load-extra-dataset', csvUrl, dfVar, dataVar })
+    await waitForReady()
+  }, [waitForReady])
+
   const reloadConf = useCallback(async (code) => {
     if (!workerRef.current) throw new Error('Engine not initialized')
     workerRef.current.postMessage({ type: 'reload-conf', code })
@@ -98,5 +111,5 @@ export function useEngine() {
     setOutput([])
   }, [])
 
-  return { status, statusMessage, output, init, loadDataset, reloadConf, reloadMetacog, execute, clearOutput }
+  return { status, statusMessage, output, userGlobals, init, loadDataset, loadExtraDataset, reloadConf, reloadMetacog, execute, clearOutput }
 }
