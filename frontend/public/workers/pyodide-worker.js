@@ -13,7 +13,7 @@ async function initPyodide() {
 
   await pyodide.loadPackage('micropip')
   const micropip = pyodide.pyimport('micropip')
-  await micropip.install(['pandas', 'scipy', 'matplotlib'])
+  await micropip.install(['pandas', 'scipy', 'matplotlib', 'tqdm'])
 
   // Pre-import common packages so first execution is faster
   await pyodide.runPythonAsync(`
@@ -22,6 +22,10 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+# Disable tqdm monitor thread (not supported in WebWorker)
+import tqdm
+tqdm.tqdm.monitor_interval = 0
 `)
 
   // Load the conf library bundle
@@ -29,6 +33,12 @@ import matplotlib.pyplot as plt
   const confResponse = await fetch('/conf_bundle.py')
   const confCode = await confResponse.text()
   await pyodide.runPythonAsync(confCode)
+
+  // Load the metacog library bundle (metacognitive measures)
+  postMessage({ type: 'status', status: 'loading', message: 'Loading metacog library...' })
+  const metacogResponse = await fetch('/metacog_bundle.py')
+  const metacogCode = await metacogResponse.text()
+  await pyodide.runPythonAsync(metacogCode)
 
   postMessage({ type: 'status', status: 'ready' })
 }
@@ -82,13 +92,47 @@ def _capture_show(*args, **kwargs):
 plt.show = _capture_show
 `)
 
-  // Set up stdout/stderr capture
+  // Set up live stdout (streams to main thread immediately) and captured stderr
   await pyodide.runPythonAsync(`
-import sys
+import sys, js
 from io import StringIO
-__stdout_capture__ = StringIO()
+from pyodide.ffi import to_js
+
+def _post(msg_type, text):
+    js.postMessage(to_js({'type': msg_type, 'text': text}, dict_converter=js.Object.fromEntries))
+
+class _LiveStdout:
+    """Streams stdout to the main thread line-by-line via postMessage.
+    Handles \\r (carriage return) for tqdm progress bar updates."""
+    def __init__(self):
+        self._buffer = ''
+        self._cr_pending = False
+    def write(self, text):
+        if not text:
+            return
+        self._buffer += text
+        while True:
+            idx_n = self._buffer.find('\\n')
+            idx_r = self._buffer.find('\\r')
+            if idx_n < 0 and idx_r < 0:
+                break
+            if idx_r >= 0 and (idx_n < 0 or idx_r < idx_n):
+                self._buffer = self._buffer[idx_r + 1:]
+                self._cr_pending = True
+            elif idx_n >= 0:
+                line = self._buffer[:idx_n]
+                self._buffer = self._buffer[idx_n + 1:]
+                msg_type = 'stdout-cr' if self._cr_pending else 'stdout'
+                _post(msg_type, line + '\\n')
+                self._cr_pending = False
+    def flush(self):
+        if self._buffer:
+            msg_type = 'stdout-cr' if self._cr_pending else 'stdout'
+            _post(msg_type, self._buffer)
+            self._buffer = ''
+
 __stderr_capture__ = StringIO()
-sys.stdout = __stdout_capture__
+sys.stdout = _LiveStdout()
 sys.stderr = __stderr_capture__
 `)
 
@@ -100,23 +144,19 @@ sys.stderr = __stderr_capture__
     postMessage({ type: 'stderr', text: err.message + '\n' })
   }
 
-  // Collect captured stdout/stderr
-  const stdout = pyodide.runPython('__stdout_capture__.getvalue()')
+  // Flush remaining stdout and collect stderr
+  pyodide.runPython('sys.stdout.flush()')
   const stderr = pyodide.runPython('__stderr_capture__.getvalue()')
 
   // Restore original stdout/stderr and plt.show
   await pyodide.runPythonAsync(`
 sys.stdout = sys.__stdout__
 sys.stderr = sys.__stderr__
-del __stdout_capture__
 del __stderr_capture__
 plt.show = _original_show
 del _original_show
 `)
 
-  if (stdout) {
-    postMessage({ type: 'stdout', text: stdout })
-  }
   if (stderr) {
     postMessage({ type: 'stderr', text: stderr })
   }
@@ -164,6 +204,9 @@ onmessage = async function (e) {
     } else if (type === 'load-dataset') {
       await loadDataset(e.data.csvUrl)
     } else if (type === 'reload-conf') {
+      await pyodide.runPythonAsync(e.data.code)
+      postMessage({ type: 'status', status: 'ready' })
+    } else if (type === 'reload-metacog') {
       await pyodide.runPythonAsync(e.data.code)
       postMessage({ type: 'status', status: 'ready' })
     } else if (type === 'execute') {

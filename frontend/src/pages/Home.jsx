@@ -1,7 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useEngine } from '../hooks/useEngine'
 import { useDatasets } from '../hooks/useDatasets'
+
+const NEWS_ITEMS = [
+  { date: '2026-03-12', title: 'ConfDB Board has launched!', text: 'Confidence Database Board has officially launched! Explore 180 behavioral datasets and run analyses directly in your browser.' },
+]
+
+const INITIAL_NEWS_COUNT = 5
 
 const TASK_TYPE_LABELS = {
   binary_classification: 'Binary',
@@ -21,6 +27,10 @@ export default function Home() {
     return shuffled.slice(0, 6)
   }, [datasets])
 
+  const [newsCount, setNewsCount] = useState(INITIAL_NEWS_COUNT)
+  const visibleNews = NEWS_ITEMS.slice(0, newsCount)
+  const hasMoreNews = newsCount < NEWS_ITEMS.length
+
   async function handleTest() {
     clearOutput()
     await init()
@@ -35,6 +45,32 @@ export default function Home() {
         (Rahnev et al., 2020). Browse datasets, select analysis templates, and
         run Python code directly in your browser.
       </p>
+
+      {/* News */}
+      <div className="mb-10">
+        <h2 className="text-xl font-semibold mb-4">News</h2>
+        <div className="space-y-3">
+          {visibleNews.map((item, i) => (
+            <div key={i} className="border border-blue-300 rounded-lg px-5 py-3">
+              <div className="flex items-baseline gap-3 mb-1">
+                <time className="shrink-0 text-sm font-semibold text-gray-800 tabular-nums" dateTime={item.date}>
+                  {new Date(item.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </time>
+                <h3 className="text-sm font-semibold text-gray-900">{item.title}</h3>
+              </div>
+              <p className="text-sm text-gray-600">{item.text}</p>
+            </div>
+          ))}
+        </div>
+        {hasMoreNews && (
+          <button
+            onClick={() => setNewsCount((n) => n + INITIAL_NEWS_COUNT)}
+            className="mt-3 text-sm text-blue-600 hover:underline cursor-pointer"
+          >
+            Show older news
+          </button>
+        )}
+      </div>
 
       {/* Featured datasets */}
       <div className="mb-10">
@@ -141,7 +177,7 @@ export default function Home() {
         {output.length > 0 && (
           <pre className="bg-gray-900 text-gray-100 text-sm p-3 rounded overflow-x-auto">
             {output.map((item, i) => {
-              if (item.type === 'stdout') return <span key={i}>{item.text}</span>
+              if (item.type === 'stdout' || item.type === 'stdout-cr') return <span key={i}>{item.text}</span>
               if (item.type === 'stderr') return <span key={i} className="text-red-400">{item.text}</span>
               if (item.type === 'result') return <span key={i} className="text-green-400">{item.success ? '\n--- Done ---' : '\n--- Failed ---'}</span>
               return null

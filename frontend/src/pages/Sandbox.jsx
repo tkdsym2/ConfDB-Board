@@ -75,7 +75,10 @@ export default function Sandbox() {
   const [confCode, setConfCode] = useState('')
   const [confSaved, setConfSaved] = useState('')      // Cmd+S checkpoint — for dirty dot
   const [confInitial, setConfInitial] = useState('')   // original fetched — for leave guard
-  const [activeTab, setActiveTab] = useState('script') // 'script' | 'conf'
+  const [metacogCode, setMetacogCode] = useState('')
+  const [metacogSaved, setMetacogSaved] = useState('')       // Cmd+S checkpoint — for dirty dot
+  const [metacogInitial, setMetacogInitial] = useState('')    // original fetched — for leave guard
+  const [activeTab, setActiveTab] = useState('script') // 'script' | 'conf' | 'metacog'
   const [selectedAnalysisId, setSelectedAnalysisId] = useState(null)
   const [elapsed, setElapsed] = useState(null)
   const [saveFlash, setSaveFlash] = useState(false)
@@ -91,8 +94,9 @@ export default function Sandbox() {
   const scriptsMapRef = useRef({}) // { [analysisId | 'explore']: code }
 
   const confDirty = confCode !== confSaved       // tab dot: changed since last save
+  const metacogDirty = metacogCode !== metacogSaved       // tab dot: changed since last save
   const codeDirty = code !== codeSaved            // tab dot: changed since last save
-  const hasModifiedWork = code !== codeInitial || confCode !== confInitial // leave guard: differs from original
+  const hasModifiedWork = code !== codeInitial || confCode !== confInitial || metacogCode !== metacogInitial // leave guard: differs from original
   const consoleItems = useMemo(() => engine.output.filter((item) => item.type !== 'plot'), [engine.output])
   const plots = useMemo(() => engine.output.filter((item) => item.type === 'plot'), [engine.output])
 
@@ -123,6 +127,7 @@ export default function Sandbox() {
   const handleSave = useCallback(() => {
     setCodeSaved(code)
     setConfSaved(confCode)
+    setMetacogSaved(metacogCode)
     saveCurrentScript()
     // For custom scripts, saving updates the initial baseline (user owns the template)
     if (selectedCustomId) {
@@ -130,7 +135,7 @@ export default function Sandbox() {
     }
     setSaveFlash(true)
     setTimeout(() => setSaveFlash(false), 1500)
-  }, [code, confCode, saveCurrentScript, selectedCustomId])
+  }, [code, confCode, metacogCode, saveCurrentScript, selectedCustomId])
 
   useEffect(() => {
     const handler = (e) => {
@@ -149,7 +154,7 @@ export default function Sandbox() {
       hasModifiedWork && currentLocation.pathname !== nextLocation.pathname
   )
 
-  // Fetch conf_bundle.py source
+  // Fetch conf_bundle.py and metacog_bundle.py source
   useEffect(() => {
     fetch('/conf_bundle.py')
       .then((res) => res.text())
@@ -157,6 +162,13 @@ export default function Sandbox() {
         setConfCode(text)
         setConfSaved(text)
         setConfInitial(text)
+      })
+    fetch('/metacog_bundle.py')
+      .then((res) => res.text())
+      .then((text) => {
+        setMetacogCode(text)
+        setMetacogSaved(text)
+        setMetacogInitial(text)
       })
   }, [])
 
@@ -210,9 +222,12 @@ export default function Sandbox() {
     if (confCode !== confInitial) {
       await engine.reloadConf(confCode)
     }
+    if (metacogCode !== metacogInitial) {
+      await engine.reloadMetacog(metacogCode)
+    }
     await engine.execute(code)
     setElapsed(((performance.now() - start) / 1000).toFixed(2))
-  }, [engine, code, confCode, confInitial])
+  }, [engine, code, confCode, confInitial, metacogCode, metacogInitial])
 
   const handleSelectAnalysis = useCallback((analysis) => {
     if (!dataset) return
@@ -448,10 +463,31 @@ export default function Sandbox() {
                 <span className="ml-2 inline-block w-2 h-2 rounded-full bg-amber-400 align-middle" title="Modified" />
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('metacog')}
+              className={`px-5 py-2 text-sm font-medium cursor-pointer transition-colors border-t-2 ${
+                activeTab === 'metacog'
+                  ? 'text-white bg-[#1e1e1e] border-blue-400'
+                  : 'text-gray-500 bg-[#2d2d2d] border-transparent hover:text-gray-300 hover:bg-[#2a2a2a]'
+              }`}
+            >
+              metacog.py
+              {metacogDirty && (
+                <span className="ml-2 inline-block w-2 h-2 rounded-full bg-amber-400 align-middle" title="Modified" />
+              )}
+            </button>
             <div className="flex-1 bg-[#252526]" />
             {confDirty && activeTab === 'conf' && (
               <button
                 onClick={() => { setConfCode(confInitial); setConfSaved(confInitial) }}
+                className="mr-3 px-2.5 py-1 text-xs text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 rounded cursor-pointer transition-colors"
+              >
+                Reset
+              </button>
+            )}
+            {metacogDirty && activeTab === 'metacog' && (
+              <button
+                onClick={() => { setMetacogCode(metacogInitial); setMetacogSaved(metacogInitial) }}
                 className="mr-3 px-2.5 py-1 text-xs text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 rounded cursor-pointer transition-colors"
               >
                 Reset
@@ -475,13 +511,29 @@ export default function Sandbox() {
                   padding: { top: 8 },
                 }}
               />
-            ) : (
+            ) : activeTab === 'conf' ? (
               <Editor
                 height="100%"
                 language="python"
                 theme="vs-dark"
                 value={confCode}
                 onChange={(val) => setConfCode(val || '')}
+                options={{
+                  fontSize: 13,
+                  minimap: { enabled: false },
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'on',
+                  padding: { top: 8 },
+                }}
+              />
+            ) : (
+              <Editor
+                height="100%"
+                language="python"
+                theme="vs-dark"
+                value={metacogCode}
+                onChange={(val) => setMetacogCode(val || '')}
                 options={{
                   fontSize: 13,
                   minimap: { enabled: false },
@@ -514,7 +566,7 @@ export default function Sandbox() {
                 </span>
               )}
               {consoleItems.map((item, i) => {
-                if (item.type === 'stdout') {
+                if (item.type === 'stdout' || item.type === 'stdout-cr') {
                   return <pre key={i} className="whitespace-pre-wrap">{item.text}</pre>
                 }
                 if (item.type === 'stderr') {

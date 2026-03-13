@@ -5,6 +5,7 @@ import Datasets from './pages/Datasets'
 import DatasetDetail from './pages/DatasetDetail'
 import Analyses from './pages/Analyses'
 import Sandbox from './pages/Sandbox'
+import Feedback from './pages/Feedback'
 
 const router = createBrowserRouter([
   {
@@ -15,6 +16,7 @@ const router = createBrowserRouter([
       { path: '/datasets/:id', element: <DatasetDetail /> },
       { path: '/analyses', element: <Analyses /> },
       { path: '/sandbox', element: <Sandbox /> },
+      { path: '/feedback', element: <Feedback /> },
     ],
   },
 ])

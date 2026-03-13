@@ -12,9 +12,10 @@ Web platform for exploring and analyzing the Confidence Database (Rahnev et al.,
 
 - **Frontend**: React 19 + Vite 7 + TailwindCSS v4 (`@tailwindcss/vite`) + React Router v7
 - **State**: TanStack Query v5 (data fetching), Zustand v5 (installed, not yet used)
-- **Backend**: Supabase (PostgreSQL + Storage) — fully populated
+- **Backend**: Supabase (PostgreSQL + Storage + Edge Functions) — fully populated
 - **Code Editor**: Monaco Editor (`@monaco-editor/react`)
-- **Execution**: Pyodide v0.27.4 in WebWorker (micropip → pandas, scipy, matplotlib)
+- **Execution**: Pyodide v0.27.4 in WebWorker (micropip → pandas, scipy, matplotlib, tqdm)
+- **Email**: Resend API (via Supabase Edge Function)
 - **Deployment**: render.com Static Site (free tier)
 
 ## Directory Structure
@@ -24,7 +25,7 @@ ConfDBBoard/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   └── Layout.jsx           # Nav bar + Outlet
+│   │   │   └── Layout.jsx           # Nav bar (Datasets, Analyses, Feedback, GitHub) + Outlet
 │   │   ├── hooks/
 │   │   │   ├── useDatasets.js        # useDatasets, useTagCounts, useDataset, useDatasetWithTags, useDatasetTags
 │   │   │   ├── useAnalyses.js        # useAnalyses, useAnalysis, getAnalysisTagIds, datasetSupportsAnalysis
@@ -36,12 +37,14 @@ ConfDBBoard/
 │   │   │   ├── Datasets.jsx          # Catalog: search + domain/task/tag filters, two-row layout per dataset
 │   │   │   ├── DatasetDetail.jsx     # Metadata, paper title/DOI link, tags, download/sandbox buttons
 │   │   │   ├── Analyses.jsx          # Analysis-first entry: cards with compatible datasets
-│   │   │   └── Sandbox.jsx           # Dual-tab editor + split output + template/custom scripts
+│   │   │   ├── Sandbox.jsx           # Dual-tab editor + split output + template/custom scripts
+│   │   │   └── Feedback.jsx          # Feedback form with subject dropdown, sidebar, Resend email
 │   │   ├── App.jsx                   # Data router (createBrowserRouter + RouterProvider)
 │   │   ├── main.jsx                  # Entry: QueryClientProvider wrapping App
 │   │   └── index.css                 # @import "tailwindcss"
 │   ├── public/
 │   │   ├── conf_bundle.py            # Auto-generated conf library for Pyodide
+│   │   ├── metacog_bundle.py          # Auto-generated metacog library for Pyodide
 │   │   ├── favicon.svg               # Lightbulb favicon (replaces vite.svg)
 │   │   ├── og-image.svg              # OG image source (SVG)
 │   │   ├── og-image.png              # OG image for social sharing (1200x630)
@@ -61,9 +64,18 @@ ConfDBBoard/
 │   │   ├── sdt.py                    # d' and criterion (Signal Detection Theory)
 │   │   ├── metacognition.py          # Type 2 ROC and AUC
 │   │   └── viz.py                    # Plotting helpers
-│   └── conf_bundle.py               # Auto-generated bundle (source of truth copy)
+│   ├── metacog/                      # Source modules for metacog library (metacognitive measures)
+│   │   ├── __init__.py
+│   │   ├── raw.py                    # Gamma, Phi, ΔConf
+│   │   ├── meta_d.py                 # meta-d' MLE
+│   │   ├── ideal.py                  # SDT ideal observer expected values
+│   │   ├── model_based.py            # meta-noise, meta-uncertainty
+│   │   └── summary.py               # compute_all + print_summary
+│   ├── conf_bundle.py               # Auto-generated bundle (source of truth copy)
+│   └── metacog_bundle.py             # Auto-generated bundle (source of truth copy)
 ├── scripts/
 │   ├── build_conf_bundle.py          # Bundles conf/ modules → conf_bundle.py
+│   ├── build_metacog_bundle.py       # Bundles metacog/ modules → metacog_bundle.py
 │   ├── extract_paper_info.py         # Extracts paper titles/DOIs from readme files → paper_info.csv
 │   ├── seed_analyses.mjs             # Seeds 4 analyses + analysis_tags into Supabase
 │   ├── seed_paper_info.mjs           # Populates paper_title/paper_doi in datasets table
@@ -83,6 +95,10 @@ ConfDBBoard/
 ├── conf_db_data/                     # Raw CSVs + readme files (~243MB, gitignored)
 │   ├── Confidence Database/          # 180 data CSVs + 180 readme files
 │   └── Database_Information.xlsx     # Master spreadsheet (authors, journal, year, stimuli, etc.)
+├── supabase/
+│   └── functions/
+│       └── send-feedback/
+│           └── index.ts              # Edge Function: feedback form → Resend email (Deno)
 ├── .env                              # SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (for scripts)
 ├── .env.example
 ├── .gitignore
@@ -107,6 +123,34 @@ SUPABASE_URL=https://lgcmgbovzcyxtbvfdggr.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 ```
 
+## Supabase Edge Functions
+
+### send-feedback
+
+Location: `supabase/functions/send-feedback/index.ts` (Deno runtime)
+
+Receives feedback form submissions and sends email via Resend API. Deployed with `--no-verify-jwt` (public endpoint, no auth required).
+
+**Endpoint**: `POST {SUPABASE_URL}/functions/v1/send-feedback`
+
+**Request body**: `{ name, email, subject, message }` (all required strings)
+
+**Behavior**:
+- CORS: allows all origins, handles OPTIONS preflight
+- Validates all fields present, email format
+- HTML-escapes all user input (XSS prevention)
+- Sends via Resend API with `reply_to` set to sender's email
+- From: `ConfDB Feedback <onboarding@resend.dev>`
+- Subject: `[ConfDB Feedback] {subject}`
+
+**Secrets** (set via `supabase secrets set`):
+- `RESEND_API_KEY` — Resend API key
+- `FEEDBACK_TO` — recipient email (currently `kazuma.takada222@gmail.com`)
+
+**Note**: Resend free tier only allows sending to the account owner's email. To send to other addresses, verify a custom domain at resend.com/domains.
+
+**Deploy**: `supabase functions deploy send-feedback --no-verify-jwt`
+
 ## Supabase Schema
 
 ### Tables
@@ -122,8 +166,8 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 
 **dataset_tags** (2,013 rows): `dataset_id(FK→datasets)`, `tag_id(FK→tags)`, `note`
 
-**analyses** (4 rows): `id(INT PK)`, `name`, `description`, `category`, `difficulty`, `python_template`, `r_template`, `required_columns[]`, `sort_order`
-- IDs 1-4, all difficulty `"basic"`, no auto-increment
+**analyses** (5 rows): `id(INT PK)`, `name`, `description`, `category`, `difficulty`, `python_template`, `r_template`, `required_columns[]`, `sort_order`
+- IDs 1-5, all difficulty `"basic"`, no auto-increment
 
 **analysis_tags**: `analysis_id(FK→analyses)`, `tag_id(FK→tags)`, `is_primary`
 
@@ -135,7 +179,7 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 - Bucket `csv-files` (public read): 180 CSVs
 - URL pattern: `{SUPABASE_URL}/storage/v1/object/public/csv-files/data_{dataset_id}.csv`
 
-## Analysis Templates (4 seeded)
+## Analysis Templates (5 seeded)
 
 | ID | Name | Required Tags |
 |----|------|---------------|
@@ -143,6 +187,7 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 | 2 | Signal Detection: d' and criterion | dprime |
 | 3 | Confidence-Accuracy Correlation | confidence_accuracy |
 | 4 | RT Distribution | rt_distribution |
+| 5 | Metacognitive Measures | confidence_accuracy, dprime, type2_auc |
 
 All templates use `conf.load(df)` for column detection. Compatibility is checked via tag_ids: `requiredTagIds.every(t => availableTagIds.includes(t))`.
 
@@ -188,24 +233,84 @@ The build script (`scripts/build_conf_bundle.py`) bundles source modules into a 
 - Appends a `class conf:` wrapper that exposes all functions via `staticmethod()`
 - Outputs to both `libraries/python/conf_bundle.py` and `frontend/public/conf_bundle.py`
 
+## metacog Library API
+
+Source: `libraries/python/metacog/` → bundled to `metacog_bundle.py`.
+
+Available in Pyodide sandbox as the `metacog` namespace. Implements all 17 metacognitive measures (Shekhar & Rahnev, 2025).
+
+```python
+# Compute all 17 measures at once (verbose=True by default, shows tqdm progress bars)
+results = metacog.compute_all(data)           # Returns DataFrame with all measures per subject
+metacog.print_summary(results)                # Formatted console output
+
+# Skip slower model-based measures (meta-noise, meta-uncertainty)
+results = metacog.compute_all(data, include_model_based=False)
+
+# Disable progress output
+results = metacog.compute_all(data, verbose=False)
+
+# Individual raw measures (verbose=False by default)
+gamma_df = metacog.gamma(data)                # Goodman-Kruskal gamma
+phi_df = metacog.phi(data)                    # Pearson correlation (confidence × accuracy)
+dconf_df = metacog.delta_conf(data)           # Mean confidence: correct - incorrect
+
+# meta-d' (MLE)
+md_df = metacog.meta_d(data)                  # Returns: subject, meta_d, dprime, criterion
+
+# SDT expected values (ideal observer simulation)
+expected_df = metacog.sdt_expected(data, sdt_df)  # Expected AUC2, Gamma, Phi, ΔConf
+
+# Model-based measures
+mn_df = metacog.meta_noise(data)              # Noisy readout model σ
+mu_df = metacog.meta_uncertainty(data)        # CASANDRE model σ
+
+# All individual functions accept verbose=True to show tqdm progress per subject
+md_df = metacog.meta_d(data, verbose=True)
+```
+
+**17 measures computed:**
+- Raw (5): meta-d', AUC2, Gamma, Phi, ΔConf
+- Ratio (5): M-Ratio, AUC2-Ratio, Gamma-Ratio, Phi-Ratio, ΔConf-Ratio
+- Difference (5): M-Diff, AUC2-Diff, Gamma-Diff, Phi-Diff, ΔConf-Diff
+- Model-based (2): meta-noise, meta-uncertainty
+
+### metacog_bundle.py Build Process
+
+Same approach as conf_bundle.py. Build script: `scripts/build_metacog_bundle.py`.
+- Cross-module references are also renamed (e.g. summary.py calls `_gamma()` instead of `gamma()`)
+- Assumes `conf` class is already loaded in global scope
+- Unified imports include `sys`, `tqdm` (for progress bars) in addition to numpy/pandas/scipy
+- Build: `cd frontend && npm run build:metacog` or `/usr/bin/python3 scripts/build_metacog_bundle.py`
+
+### Progress Tracking (tqdm)
+
+All per-subject computation functions accept a `verbose` parameter. When `verbose=True`, tqdm progress bars show per-subject progress (e.g. `meta-d':  60%|██████    | 15/25`). `compute_all()` defaults to `verbose=True`; individual functions default to `verbose=False`.
+
+tqdm writes to `sys.stdout` with `\r` carriage returns for in-place updates. The Pyodide worker's `_LiveStdout` class detects `\r` and sends `stdout-cr` messages (instead of `stdout`) so the frontend can replace the previous line rather than appending. tqdm's monitor thread is disabled at init (`tqdm.tqdm.monitor_interval = 0`) since WebWorkers don't support threading.
+
 ## Pyodide Worker Protocol
 
 Worker location: `frontend/public/workers/pyodide-worker.js`
 
 **Inbound messages** (main → worker):
-- `{ type: 'init' }` — load Pyodide, install packages, load conf_bundle.py
+- `{ type: 'init' }` — load Pyodide, install packages, load conf_bundle.py and metacog_bundle.py
 - `{ type: 'load-dataset', csvUrl }` — fetch CSV, create `df` and `data = conf.load(df)`
 - `{ type: 'reload-conf', code }` — re-execute conf library code (for live editing)
+- `{ type: 'reload-metacog', code }` — re-execute metacog library code (for live editing)
 - `{ type: 'execute', code }` — run user code with stdout/stderr/plot capture
 
 **Outbound messages** (worker → main):
 - `{ type: 'status', status, message }` — status: `loading` | `ready` | `running`
-- `{ type: 'stdout', text }` — captured print output
+- `{ type: 'stdout', text }` — captured print output (appended to console)
+- `{ type: 'stdout-cr', text }` — carriage-return output (replaces last `stdout-cr` entry; used by tqdm progress bars)
 - `{ type: 'stderr', text }` — errors
 - `{ type: 'plot', data }` — base64 PNG string
 - `{ type: 'result', success }` — execution complete
 
-**Globals available to user code**: `df`, `data`, `conf`, `pd`, `np`, `plt`
+**Globals available to user code**: `df`, `data`, `conf`, `metacog`, `pd`, `np`, `plt`, `tqdm`
+
+**Initialization**: After installing packages, the worker pre-imports pandas/numpy/matplotlib and disables tqdm's monitor thread (`tqdm.tqdm.monitor_interval = 0`) to avoid WebWorker threading errors.
 
 Plot capture: `plt.show()` is overridden per-execution to collect figures. After execution, all figures with axes are exported as base64 PNGs via `plt.get_fignums()`.
 
@@ -218,6 +323,7 @@ Plot capture: `plt.show()` is overridden per-execution to collect figures. After
 | `/datasets/:id` | DatasetDetail | Metadata, paper title/DOI, tags, download CSV, open in sandbox |
 | `/analyses` | Analyses | Analysis cards with compatible dataset lists |
 | `/sandbox` | Sandbox | Dual-tab editor + split output panels |
+| `/feedback` | Feedback | Feedback form with subject dropdown, sidebar info, email via Resend |
 
 Router uses `createBrowserRouter` + `RouterProvider` (data router pattern, required for `useBlocker`).
 
@@ -245,14 +351,24 @@ Sandbox accepts query params: `?dataset={id}&analysis={id}`
 - Tags grouped by category
 - Download CSV and Open in Sandbox buttons
 
+### Feedback Page Features
+
+- **Two-column layout**: form (2/3) + sidebar (1/3), stacks on mobile
+- **Subject dropdown**: predefined topics (Bug Report, Feature Request, Dataset Issue, Analysis Question, General Feedback, Other)
+- **Sidebar**: "What kind of feedback?" descriptions + "Other ways to reach us" (GitHub Issues, X, email)
+- **Success state**: full-page confirmation with checkmark, "Send another" and "Back to Home" buttons
+- **Loading state**: spinner animation on submit button
+- **Error state**: inline error banner with icon, shows Resend API error detail
+- POSTs JSON to `${VITE_SUPABASE_URL}/functions/v1/send-feedback` edge function
+
 ### Sandbox Features
 
 **Editor panel (left 3/5):**
-- File tabs: `main.py` (user script) and `conf.py` (conf library source)
+- File tabs: `main.py` (user script), `conf.py` (conf library source), and `metacog.py` (metacog library source)
 - VS Code-style tab bar with blue top-border accent on active tab
 - Amber dot indicator on modified tabs
-- conf.py always viewable/editable; changes are reloaded in Pyodide on Run
-- Reset button for conf.py to restore original
+- conf.py and metacog.py always viewable/editable; changes are reloaded in Pyodide on Run
+- Reset button for conf.py/metacog.py to restore original
 
 **Output panel (right 2/5):**
 - Split into **Console** (stdout/stderr/result) and **Plots** (base64 PNGs)
@@ -305,6 +421,11 @@ cd frontend && npm run build:conf   # Uses /usr/bin/python3 to bypass pyenv
 # or directly:
 /usr/bin/python3 scripts/build_conf_bundle.py
 
+# Rebuild metacog library bundle (after editing libraries/python/metacog/)
+cd frontend && npm run build:metacog
+# or directly:
+/usr/bin/python3 scripts/build_metacog_bundle.py
+
 # Extract paper info from readme files
 uv run python scripts/extract_paper_info.py
 
@@ -312,6 +433,9 @@ uv run python scripts/extract_paper_info.py
 cd frontend && node ../scripts/seed_analyses.mjs       # Seed analysis templates
 cd frontend && node ../scripts/update_analyses.mjs     # Update python_template fields
 cd frontend && node ../scripts/seed_paper_info.mjs     # Populate paper_title/paper_doi
+
+# Deploy Supabase Edge Functions
+supabase functions deploy send-feedback --no-verify-jwt
 ```
 
 The build:conf script uses `/usr/bin/python3` explicitly because pyenv shims may interfere.
