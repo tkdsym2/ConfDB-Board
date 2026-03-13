@@ -71,6 +71,12 @@ export function useEngine() {
     await waitForReady()
   }, [waitForReady])
 
+  const reloadMetacog = useCallback(async (code) => {
+    if (!workerRef.current) throw new Error('Engine not initialized')
+    workerRef.current.postMessage({ type: 'reload-metacog', code })
+    await waitForReady()
+  }, [waitForReady])
+
   const execute = useCallback(async (code) => {
     if (!workerRef.current) throw new Error('Engine not initialized')
 
@@ -83,5 +89,5 @@ export function useEngine() {
     setOutput([])
   }, [])
 
-  return { status, statusMessage, output, init, loadDataset, reloadConf, execute, clearOutput }
+  return { status, statusMessage, output, init, loadDataset, reloadConf, reloadMetacog, execute, clearOutput }
 }

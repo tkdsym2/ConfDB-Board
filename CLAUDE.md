@@ -42,6 +42,7 @@ ConfDBBoard/
 │   │   └── index.css                 # @import "tailwindcss"
 │   ├── public/
 │   │   ├── conf_bundle.py            # Auto-generated conf library for Pyodide
+│   │   ├── metacog_bundle.py          # Auto-generated metacog library for Pyodide
 │   │   ├── favicon.svg               # Lightbulb favicon (replaces vite.svg)
 │   │   ├── og-image.svg              # OG image source (SVG)
 │   │   ├── og-image.png              # OG image for social sharing (1200x630)
@@ -61,9 +62,18 @@ ConfDBBoard/
 │   │   ├── sdt.py                    # d' and criterion (Signal Detection Theory)
 │   │   ├── metacognition.py          # Type 2 ROC and AUC
 │   │   └── viz.py                    # Plotting helpers
-│   └── conf_bundle.py               # Auto-generated bundle (source of truth copy)
+│   ├── metacog/                      # Source modules for metacog library (metacognitive measures)
+│   │   ├── __init__.py
+│   │   ├── raw.py                    # Gamma, Phi, ΔConf
+│   │   ├── meta_d.py                 # meta-d' MLE
+│   │   ├── ideal.py                  # SDT ideal observer expected values
+│   │   ├── model_based.py            # meta-noise, meta-uncertainty
+│   │   └── summary.py               # compute_all + print_summary
+│   ├── conf_bundle.py               # Auto-generated bundle (source of truth copy)
+│   └── metacog_bundle.py             # Auto-generated bundle (source of truth copy)
 ├── scripts/
 │   ├── build_conf_bundle.py          # Bundles conf/ modules → conf_bundle.py
+│   ├── build_metacog_bundle.py       # Bundles metacog/ modules → metacog_bundle.py
 │   ├── extract_paper_info.py         # Extracts paper titles/DOIs from readme files → paper_info.csv
 │   ├── seed_analyses.mjs             # Seeds 4 analyses + analysis_tags into Supabase
 │   ├── seed_paper_info.mjs           # Populates paper_title/paper_doi in datasets table
@@ -122,8 +132,8 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 
 **dataset_tags** (2,013 rows): `dataset_id(FK→datasets)`, `tag_id(FK→tags)`, `note`
 
-**analyses** (4 rows): `id(INT PK)`, `name`, `description`, `category`, `difficulty`, `python_template`, `r_template`, `required_columns[]`, `sort_order`
-- IDs 1-4, all difficulty `"basic"`, no auto-increment
+**analyses** (5 rows): `id(INT PK)`, `name`, `description`, `category`, `difficulty`, `python_template`, `r_template`, `required_columns[]`, `sort_order`
+- IDs 1-5, all difficulty `"basic"`, no auto-increment
 
 **analysis_tags**: `analysis_id(FK→analyses)`, `tag_id(FK→tags)`, `is_primary`
 
@@ -135,7 +145,7 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 - Bucket `csv-files` (public read): 180 CSVs
 - URL pattern: `{SUPABASE_URL}/storage/v1/object/public/csv-files/data_{dataset_id}.csv`
 
-## Analysis Templates (4 seeded)
+## Analysis Templates (5 seeded)
 
 | ID | Name | Required Tags |
 |----|------|---------------|
@@ -143,6 +153,7 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 | 2 | Signal Detection: d' and criterion | dprime |
 | 3 | Confidence-Accuracy Correlation | confidence_accuracy |
 | 4 | RT Distribution | rt_distribution |
+| 5 | Metacognitive Measures | confidence_accuracy, dprime, type2_auc |
 
 All templates use `conf.load(df)` for column detection. Compatibility is checked via tag_ids: `requiredTagIds.every(t => availableTagIds.includes(t))`.
 
@@ -188,14 +199,58 @@ The build script (`scripts/build_conf_bundle.py`) bundles source modules into a 
 - Appends a `class conf:` wrapper that exposes all functions via `staticmethod()`
 - Outputs to both `libraries/python/conf_bundle.py` and `frontend/public/conf_bundle.py`
 
+## metacog Library API
+
+Source: `libraries/python/metacog/` → bundled to `metacog_bundle.py`.
+
+Available in Pyodide sandbox as the `metacog` namespace. Implements all 17 metacognitive measures (Shekhar & Rahnev, 2025).
+
+```python
+# Compute all 17 measures at once
+results = metacog.compute_all(data)           # Returns DataFrame with all measures per subject
+metacog.print_summary(results)                # Formatted console output
+
+# Skip slower model-based measures (meta-noise, meta-uncertainty)
+results = metacog.compute_all(data, include_model_based=False)
+
+# Individual raw measures
+gamma_df = metacog.gamma(data)                # Goodman-Kruskal gamma
+phi_df = metacog.phi(data)                    # Pearson correlation (confidence × accuracy)
+dconf_df = metacog.delta_conf(data)           # Mean confidence: correct - incorrect
+
+# meta-d' (MLE)
+md_df = metacog.meta_d(data)                  # Returns: subject, meta_d, dprime, criterion
+
+# SDT expected values (ideal observer simulation)
+expected_df = metacog.sdt_expected(data, sdt_df)  # Expected AUC2, Gamma, Phi, ΔConf
+
+# Model-based measures
+mn_df = metacog.meta_noise(data)              # Noisy readout model σ
+mu_df = metacog.meta_uncertainty(data)        # CASANDRE model σ
+```
+
+**17 measures computed:**
+- Raw (5): meta-d', AUC2, Gamma, Phi, ΔConf
+- Ratio (5): M-Ratio, AUC2-Ratio, Gamma-Ratio, Phi-Ratio, ΔConf-Ratio
+- Difference (5): M-Diff, AUC2-Diff, Gamma-Diff, Phi-Diff, ΔConf-Diff
+- Model-based (2): meta-noise, meta-uncertainty
+
+### metacog_bundle.py Build Process
+
+Same approach as conf_bundle.py. Build script: `scripts/build_metacog_bundle.py`.
+- Cross-module references are also renamed (e.g. summary.py calls `_gamma()` instead of `gamma()`)
+- Assumes `conf` class is already loaded in global scope
+- Build: `cd frontend && npm run build:metacog` or `/usr/bin/python3 scripts/build_metacog_bundle.py`
+
 ## Pyodide Worker Protocol
 
 Worker location: `frontend/public/workers/pyodide-worker.js`
 
 **Inbound messages** (main → worker):
-- `{ type: 'init' }` — load Pyodide, install packages, load conf_bundle.py
+- `{ type: 'init' }` — load Pyodide, install packages, load conf_bundle.py and metacog_bundle.py
 - `{ type: 'load-dataset', csvUrl }` — fetch CSV, create `df` and `data = conf.load(df)`
 - `{ type: 'reload-conf', code }` — re-execute conf library code (for live editing)
+- `{ type: 'reload-metacog', code }` — re-execute metacog library code (for live editing)
 - `{ type: 'execute', code }` — run user code with stdout/stderr/plot capture
 
 **Outbound messages** (worker → main):
@@ -205,7 +260,7 @@ Worker location: `frontend/public/workers/pyodide-worker.js`
 - `{ type: 'plot', data }` — base64 PNG string
 - `{ type: 'result', success }` — execution complete
 
-**Globals available to user code**: `df`, `data`, `conf`, `pd`, `np`, `plt`
+**Globals available to user code**: `df`, `data`, `conf`, `metacog`, `pd`, `np`, `plt`
 
 Plot capture: `plt.show()` is overridden per-execution to collect figures. After execution, all figures with axes are exported as base64 PNGs via `plt.get_fignums()`.
 
@@ -248,11 +303,11 @@ Sandbox accepts query params: `?dataset={id}&analysis={id}`
 ### Sandbox Features
 
 **Editor panel (left 3/5):**
-- File tabs: `main.py` (user script) and `conf.py` (conf library source)
+- File tabs: `main.py` (user script), `conf.py` (conf library source), and `metacog.py` (metacog library source)
 - VS Code-style tab bar with blue top-border accent on active tab
 - Amber dot indicator on modified tabs
-- conf.py always viewable/editable; changes are reloaded in Pyodide on Run
-- Reset button for conf.py to restore original
+- conf.py and metacog.py always viewable/editable; changes are reloaded in Pyodide on Run
+- Reset button for conf.py/metacog.py to restore original
 
 **Output panel (right 2/5):**
 - Split into **Console** (stdout/stderr/result) and **Plots** (base64 PNGs)
@@ -304,6 +359,11 @@ cd frontend && npm run build        # Vite production build
 cd frontend && npm run build:conf   # Uses /usr/bin/python3 to bypass pyenv
 # or directly:
 /usr/bin/python3 scripts/build_conf_bundle.py
+
+# Rebuild metacog library bundle (after editing libraries/python/metacog/)
+cd frontend && npm run build:metacog
+# or directly:
+/usr/bin/python3 scripts/build_metacog_bundle.py
 
 # Extract paper info from readme files
 uv run python scripts/extract_paper_info.py

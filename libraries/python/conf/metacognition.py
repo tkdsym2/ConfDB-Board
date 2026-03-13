@@ -68,7 +68,7 @@ def type2_auc(data, group_by_subject=True):
         x = np.concatenate([[0], x, [1]])
         y = np.concatenate([[0], y, [1]])
 
-        auc = np.trapz(y, x)
+        auc = np.trapezoid(y, x)
         results.append({'subject': subject, 'type2_auc': round(auc, 4)})
 
     return pd.DataFrame(results)

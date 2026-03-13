@@ -30,6 +30,12 @@ import matplotlib.pyplot as plt
   const confCode = await confResponse.text()
   await pyodide.runPythonAsync(confCode)
 
+  // Load the metacog library bundle (metacognitive measures)
+  postMessage({ type: 'status', status: 'loading', message: 'Loading metacog library...' })
+  const metacogResponse = await fetch('/metacog_bundle.py')
+  const metacogCode = await metacogResponse.text()
+  await pyodide.runPythonAsync(metacogCode)
+
   postMessage({ type: 'status', status: 'ready' })
 }
 
@@ -82,13 +88,33 @@ def _capture_show(*args, **kwargs):
 plt.show = _capture_show
 `)
 
-  // Set up stdout/stderr capture
+  // Set up live stdout (streams to main thread immediately) and captured stderr
   await pyodide.runPythonAsync(`
-import sys
+import sys, js
 from io import StringIO
-__stdout_capture__ = StringIO()
+from pyodide.ffi import to_js
+
+def _post(msg_type, text):
+    js.postMessage(to_js({'type': msg_type, 'text': text}, dict_converter=js.Object.fromEntries))
+
+class _LiveStdout:
+    """Streams stdout to the main thread line-by-line via postMessage."""
+    def __init__(self):
+        self._buffer = ''
+    def write(self, text):
+        if not text:
+            return
+        self._buffer += text
+        while '\\n' in self._buffer:
+            line, self._buffer = self._buffer.split('\\n', 1)
+            _post('stdout', line + '\\n')
+    def flush(self):
+        if self._buffer:
+            _post('stdout', self._buffer)
+            self._buffer = ''
+
 __stderr_capture__ = StringIO()
-sys.stdout = __stdout_capture__
+sys.stdout = _LiveStdout()
 sys.stderr = __stderr_capture__
 `)
 
@@ -100,23 +126,19 @@ sys.stderr = __stderr_capture__
     postMessage({ type: 'stderr', text: err.message + '\n' })
   }
 
-  // Collect captured stdout/stderr
-  const stdout = pyodide.runPython('__stdout_capture__.getvalue()')
+  // Flush remaining stdout and collect stderr
+  pyodide.runPython('sys.stdout.flush()')
   const stderr = pyodide.runPython('__stderr_capture__.getvalue()')
 
   // Restore original stdout/stderr and plt.show
   await pyodide.runPythonAsync(`
 sys.stdout = sys.__stdout__
 sys.stderr = sys.__stderr__
-del __stdout_capture__
 del __stderr_capture__
 plt.show = _original_show
 del _original_show
 `)
 
-  if (stdout) {
-    postMessage({ type: 'stdout', text: stdout })
-  }
   if (stderr) {
     postMessage({ type: 'stderr', text: stderr })
   }
@@ -164,6 +186,9 @@ onmessage = async function (e) {
     } else if (type === 'load-dataset') {
       await loadDataset(e.data.csvUrl)
     } else if (type === 'reload-conf') {
+      await pyodide.runPythonAsync(e.data.code)
+      postMessage({ type: 'status', status: 'ready' })
+    } else if (type === 'reload-metacog') {
       await pyodide.runPythonAsync(e.data.code)
       postMessage({ type: 'status', status: 'ready' })
     } else if (type === 'execute') {
