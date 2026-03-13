@@ -12,9 +12,10 @@ Web platform for exploring and analyzing the Confidence Database (Rahnev et al.,
 
 - **Frontend**: React 19 + Vite 7 + TailwindCSS v4 (`@tailwindcss/vite`) + React Router v7
 - **State**: TanStack Query v5 (data fetching), Zustand v5 (installed, not yet used)
-- **Backend**: Supabase (PostgreSQL + Storage) — fully populated
+- **Backend**: Supabase (PostgreSQL + Storage + Edge Functions) — fully populated
 - **Code Editor**: Monaco Editor (`@monaco-editor/react`)
 - **Execution**: Pyodide v0.27.4 in WebWorker (micropip → pandas, scipy, matplotlib, tqdm)
+- **Email**: Resend API (via Supabase Edge Function)
 - **Deployment**: render.com Static Site (free tier)
 
 ## Directory Structure
@@ -24,7 +25,7 @@ ConfDBBoard/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   └── Layout.jsx           # Nav bar + Outlet
+│   │   │   └── Layout.jsx           # Nav bar (Datasets, Analyses, Feedback, GitHub) + Outlet
 │   │   ├── hooks/
 │   │   │   ├── useDatasets.js        # useDatasets, useTagCounts, useDataset, useDatasetWithTags, useDatasetTags
 │   │   │   ├── useAnalyses.js        # useAnalyses, useAnalysis, getAnalysisTagIds, datasetSupportsAnalysis
@@ -36,7 +37,8 @@ ConfDBBoard/
 │   │   │   ├── Datasets.jsx          # Catalog: search + domain/task/tag filters, two-row layout per dataset
 │   │   │   ├── DatasetDetail.jsx     # Metadata, paper title/DOI link, tags, download/sandbox buttons
 │   │   │   ├── Analyses.jsx          # Analysis-first entry: cards with compatible datasets
-│   │   │   └── Sandbox.jsx           # Dual-tab editor + split output + template/custom scripts
+│   │   │   ├── Sandbox.jsx           # Dual-tab editor + split output + template/custom scripts
+│   │   │   └── Feedback.jsx          # Feedback form with subject dropdown, sidebar, Resend email
 │   │   ├── App.jsx                   # Data router (createBrowserRouter + RouterProvider)
 │   │   ├── main.jsx                  # Entry: QueryClientProvider wrapping App
 │   │   └── index.css                 # @import "tailwindcss"
@@ -93,6 +95,10 @@ ConfDBBoard/
 ├── conf_db_data/                     # Raw CSVs + readme files (~243MB, gitignored)
 │   ├── Confidence Database/          # 180 data CSVs + 180 readme files
 │   └── Database_Information.xlsx     # Master spreadsheet (authors, journal, year, stimuli, etc.)
+├── supabase/
+│   └── functions/
+│       └── send-feedback/
+│           └── index.ts              # Edge Function: feedback form → Resend email (Deno)
 ├── .env                              # SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (for scripts)
 ├── .env.example
 ├── .gitignore
@@ -116,6 +122,34 @@ VITE_SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_URL=https://lgcmgbovzcyxtbvfdggr.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-jwt>
 ```
+
+## Supabase Edge Functions
+
+### send-feedback
+
+Location: `supabase/functions/send-feedback/index.ts` (Deno runtime)
+
+Receives feedback form submissions and sends email via Resend API. Deployed with `--no-verify-jwt` (public endpoint, no auth required).
+
+**Endpoint**: `POST {SUPABASE_URL}/functions/v1/send-feedback`
+
+**Request body**: `{ name, email, subject, message }` (all required strings)
+
+**Behavior**:
+- CORS: allows all origins, handles OPTIONS preflight
+- Validates all fields present, email format
+- HTML-escapes all user input (XSS prevention)
+- Sends via Resend API with `reply_to` set to sender's email
+- From: `ConfDB Feedback <onboarding@resend.dev>`
+- Subject: `[ConfDB Feedback] {subject}`
+
+**Secrets** (set via `supabase secrets set`):
+- `RESEND_API_KEY` — Resend API key
+- `FEEDBACK_TO` — recipient email (currently `kazuma.takada222@gmail.com`)
+
+**Note**: Resend free tier only allows sending to the account owner's email. To send to other addresses, verify a custom domain at resend.com/domains.
+
+**Deploy**: `supabase functions deploy send-feedback --no-verify-jwt`
 
 ## Supabase Schema
 
@@ -289,6 +323,7 @@ Plot capture: `plt.show()` is overridden per-execution to collect figures. After
 | `/datasets/:id` | DatasetDetail | Metadata, paper title/DOI, tags, download CSV, open in sandbox |
 | `/analyses` | Analyses | Analysis cards with compatible dataset lists |
 | `/sandbox` | Sandbox | Dual-tab editor + split output panels |
+| `/feedback` | Feedback | Feedback form with subject dropdown, sidebar info, email via Resend |
 
 Router uses `createBrowserRouter` + `RouterProvider` (data router pattern, required for `useBlocker`).
 
@@ -315,6 +350,16 @@ Sandbox accepts query params: `?dataset={id}&analysis={id}`
 - Metadata table: participants, trials, confidence scale, RT, multi-task, condition, CSV size
 - Tags grouped by category
 - Download CSV and Open in Sandbox buttons
+
+### Feedback Page Features
+
+- **Two-column layout**: form (2/3) + sidebar (1/3), stacks on mobile
+- **Subject dropdown**: predefined topics (Bug Report, Feature Request, Dataset Issue, Analysis Question, General Feedback, Other)
+- **Sidebar**: "What kind of feedback?" descriptions + "Other ways to reach us" (GitHub Issues, X, email)
+- **Success state**: full-page confirmation with checkmark, "Send another" and "Back to Home" buttons
+- **Loading state**: spinner animation on submit button
+- **Error state**: inline error banner with icon, shows Resend API error detail
+- POSTs JSON to `${VITE_SUPABASE_URL}/functions/v1/send-feedback` edge function
 
 ### Sandbox Features
 
@@ -388,6 +433,9 @@ uv run python scripts/extract_paper_info.py
 cd frontend && node ../scripts/seed_analyses.mjs       # Seed analysis templates
 cd frontend && node ../scripts/update_analyses.mjs     # Update python_template fields
 cd frontend && node ../scripts/seed_paper_info.mjs     # Populate paper_title/paper_doi
+
+# Deploy Supabase Edge Functions
+supabase functions deploy send-feedback --no-verify-jwt
 ```
 
 The build:conf script uses `/usr/bin/python3` explicitly because pyenv shims may interfere.

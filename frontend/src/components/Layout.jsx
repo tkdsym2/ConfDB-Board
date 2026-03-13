@@ -14,6 +14,9 @@ export function Layout() {
           <Link to="/analyses" className="text-gray-600 hover:text-gray-900">
             Analyses
           </Link>
+          <Link to="/feedback" className="text-gray-600 hover:text-gray-900">
+            Feedback
+          </Link>
           <a
             href="https://github.com/tkdsym2/ConfDB-Board"
             target="_blank"
