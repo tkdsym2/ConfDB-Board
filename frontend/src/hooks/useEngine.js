@@ -22,6 +22,15 @@ export function useEngine() {
       }
     } else if (msg.type === 'stdout') {
       setOutput((prev) => [...prev, { type: 'stdout', text: msg.text }])
+    } else if (msg.type === 'stdout-cr') {
+      // Carriage-return update (tqdm progress bars): replace last stdout-cr entry
+      setOutput((prev) => {
+        const last = prev.length > 0 ? prev[prev.length - 1] : null
+        if (last && last.type === 'stdout-cr') {
+          return [...prev.slice(0, -1), { type: 'stdout-cr', text: msg.text }]
+        }
+        return [...prev, { type: 'stdout-cr', text: msg.text }]
+      })
     } else if (msg.type === 'stderr') {
       setOutput((prev) => [...prev, { type: 'stderr', text: msg.text }])
     } else if (msg.type === 'plot') {

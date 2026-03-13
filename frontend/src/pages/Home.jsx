@@ -141,7 +141,7 @@ export default function Home() {
         {output.length > 0 && (
           <pre className="bg-gray-900 text-gray-100 text-sm p-3 rounded overflow-x-auto">
             {output.map((item, i) => {
-              if (item.type === 'stdout') return <span key={i}>{item.text}</span>
+              if (item.type === 'stdout' || item.type === 'stdout-cr') return <span key={i}>{item.text}</span>
               if (item.type === 'stderr') return <span key={i} className="text-red-400">{item.text}</span>
               if (item.type === 'result') return <span key={i} className="text-green-400">{item.success ? '\n--- Done ---' : '\n--- Failed ---'}</span>
               return null

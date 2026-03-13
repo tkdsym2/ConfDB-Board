@@ -9,11 +9,13 @@ meta-uncertainty: From the CASANDRE model (Shekhar & Rahnev, 2024).
     meta-uncertainty is the noise parameter σ.
 """
 
+import sys
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from scipy.optimize import minimize
 from scipy.integrate import quad
+from tqdm import tqdm
 
 
 def _noisy_type2_probs(sigma_meta, dprime, crit_pos, n_conf, side='s2'):
@@ -140,7 +142,7 @@ def _meta_noise_nll(sigma_meta, nR_S1, nR_S2, dprime, crit_pos, n_conf):
     return -log_L
 
 
-def meta_noise_fit(data, sdt_df=None, group_by_subject=True):
+def meta_noise_fit(data, sdt_df=None, group_by_subject=True, verbose=False):
     """
     Fit meta-noise (σ_meta) per subject using the noisy readout model.
 
@@ -149,6 +151,7 @@ def meta_noise_fit(data, sdt_df=None, group_by_subject=True):
     data : ConfData instance
     sdt_df : DataFrame with [subject, dprime, criterion] (optional)
     group_by_subject : bool
+    verbose : bool — show tqdm progress bar
 
     Returns
     -------
@@ -168,6 +171,9 @@ def meta_noise_fit(data, sdt_df=None, group_by_subject=True):
     sdt_dict = {row['subject']: row for _, row in sdt_df.iterrows()}
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='meta-noise', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         sdt_row = sdt_dict.get(subject)
@@ -231,7 +237,7 @@ def _casandre_nll(params, confidence, accuracy, evidence_strength):
     return -log_L
 
 
-def meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True):
+def meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True, verbose=False):
     """
     Fit meta-uncertainty per subject using a simplified CASANDRE model.
 
@@ -243,6 +249,7 @@ def meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True):
     data : ConfData instance
     sdt_df : DataFrame with [subject, dprime, criterion, hit_rate, fa_rate]
     group_by_subject : bool
+    verbose : bool — show tqdm progress bar
 
     Returns
     -------
@@ -263,6 +270,9 @@ def meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True):
     sdt_dict = {row['subject']: row for _, row in sdt_df.iterrows()}
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='meta-uncertainty', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         sdt_row = sdt_dict.get(subject)

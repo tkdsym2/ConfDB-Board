@@ -49,9 +49,9 @@ def compute_all(data, include_model_based=True, verbose=True):
     # --- Step 1: Measures that only need accuracy + confidence ---
     if verbose:
         print("[1/6] Computing raw measures (Gamma, Phi, ΔConf)...")
-    gamma_df = gamma(data)
-    phi_df = phi(data)
-    dconf_df = delta_conf(data)
+    gamma_df = gamma(data, verbose=verbose)
+    phi_df = phi(data, verbose=verbose)
+    dconf_df = delta_conf(data, verbose=verbose)
 
     # AUC2 — use conf library
     if verbose:
@@ -67,7 +67,7 @@ def compute_all(data, include_model_based=True, verbose=True):
     if has_sdt:
         if verbose:
             print(f"[3/6] Computing meta-d' (MLE fitting, {n_subj} subjects)...")
-        md_df = meta_d(data)
+        md_df = meta_d(data, verbose=verbose)
         if verbose:
             n_ok = md_df['meta_d'].notna().sum()
             print(f"       meta-d' fitted for {n_ok}/{n_subj} subjects")
@@ -82,7 +82,7 @@ def compute_all(data, include_model_based=True, verbose=True):
         if verbose:
             print(f"[4/6] Simulating ideal SDT observer ({n_subj} subjects)...")
         sdt_df_for_expected = md_df[['subject', 'dprime', 'criterion']].copy()
-        expected_df = sdt_expected(data, sdt_df_for_expected)
+        expected_df = sdt_expected(data, sdt_df_for_expected, verbose=verbose)
         result = result.merge(expected_df, on='subject', how='outer')
 
         # --- Ratio measures ---
@@ -113,7 +113,7 @@ def compute_all(data, include_model_based=True, verbose=True):
             if verbose:
                 print(f"[5/6] Fitting meta-noise model ({n_subj} subjects)...")
             try:
-                mn_df = meta_noise_fit(data, sdt_df_for_expected)
+                mn_df = meta_noise_fit(data, sdt_df_for_expected, verbose=verbose)
                 result = result.merge(mn_df, on='subject', how='outer')
             except Exception as e:
                 if verbose:
@@ -123,7 +123,7 @@ def compute_all(data, include_model_based=True, verbose=True):
             if verbose:
                 print(f"[6/6] Fitting CASANDRE model ({n_subj} subjects)...")
             try:
-                mu_df = meta_uncertainty_fit(data, sdt_df_for_expected)
+                mu_df = meta_uncertainty_fit(data, sdt_df_for_expected, verbose=verbose)
                 result = result.merge(
                     mu_df[['subject', 'meta_uncertainty']],
                     on='subject', how='outer'

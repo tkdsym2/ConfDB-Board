@@ -9,18 +9,20 @@
 #   results = metacog.compute_all(data)
 #   metacog.print_summary(results)
 
+import sys
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from scipy.optimize import minimize
 from scipy.integrate import quad
+from tqdm import tqdm
 
 
 # ---------------------------------------------------------------------------
 # raw.py — Gamma, Phi, ΔConf
 # ---------------------------------------------------------------------------
 
-def _gamma(data, group_by_subject=True):
+def _gamma(data, group_by_subject=True, verbose=False):
     """
     Goodman-Kruskal _gamma correlation between confidence and accuracy.
 
@@ -37,6 +39,9 @@ def _gamma(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='Gamma', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         confidence = group[conf_col].values
@@ -67,7 +72,7 @@ def _gamma(data, group_by_subject=True):
     return pd.DataFrame(results)
 
 
-def _phi(data, group_by_subject=True):
+def _phi(data, group_by_subject=True, verbose=False):
     """
     Pearson correlation (Phi) between confidence and accuracy.
 
@@ -80,6 +85,9 @@ def _phi(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='Phi', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         confidence = group[conf_col].values.astype(float)
@@ -95,7 +103,7 @@ def _phi(data, group_by_subject=True):
     return pd.DataFrame(results)
 
 
-def _delta_conf(data, group_by_subject=True):
+def _delta_conf(data, group_by_subject=True, verbose=False):
     """
     ΔConf: difference in mean confidence between correct and error trials.
 
@@ -110,6 +118,9 @@ def _delta_conf(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='ΔConf', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         accuracy = group[acc_col].astype(int).values
@@ -333,7 +344,7 @@ def _fit_meta_d_MLE(nR_S1, nR_S2):
     }
 
 
-def _meta_d(data, group_by_subject=True):
+def _meta_d(data, group_by_subject=True, verbose=False):
     """
     Compute meta-d' per subject via MLE.
 
@@ -355,6 +366,9 @@ def _meta_d(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc="meta-d'", total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         if group[conf_col].nunique() < 2:
@@ -490,7 +504,7 @@ def _simulate_ideal_observer(dprime, crit_position, n_conf_levels, n_samples=500
     }
 
 
-def _sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000):
+def _sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000, verbose=False):
     """
     Compute SDT-expected metacognitive measures per subject.
 
@@ -504,6 +518,7 @@ def _sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000):
              If None, will be computed internally using conf.dprime().
     group_by_subject : bool
     n_samples : int — simulation samples per stimulus class
+    verbose : bool — show tqdm progress bar
 
     Returns
     -------
@@ -517,7 +532,10 @@ def _sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000):
     n_conf_levels = data.raw[data.col('confidence')].nunique()
 
     results = []
-    for _, row in sdt_df.iterrows():
+    rows_iter = sdt_df.iterrows()
+    if verbose:
+        rows_iter = tqdm(rows_iter, desc='SDT expected', total=len(sdt_df), file=sys.stdout)
+    for _, row in rows_iter:
         d = row['dprime']
         c = row.get('criterion', 0.0)
 
@@ -676,7 +694,7 @@ def _meta_noise_nll(sigma_meta, nR_S1, nR_S2, dprime, crit_pos, n_conf):
     return -log_L
 
 
-def _meta_noise_fit(data, sdt_df=None, group_by_subject=True):
+def _meta_noise_fit(data, sdt_df=None, group_by_subject=True, verbose=False):
     """
     Fit meta-noise (σ_meta) per subject using the noisy readout model.
 
@@ -685,6 +703,7 @@ def _meta_noise_fit(data, sdt_df=None, group_by_subject=True):
     data : ConfData instance
     sdt_df : DataFrame with [subject, dprime, criterion] (optional)
     group_by_subject : bool
+    verbose : bool — show tqdm progress bar
 
     Returns
     -------
@@ -703,6 +722,9 @@ def _meta_noise_fit(data, sdt_df=None, group_by_subject=True):
     sdt_dict = {row['subject']: row for _, row in sdt_df.iterrows()}
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='meta-noise', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         sdt_row = sdt_dict.get(subject)
@@ -766,7 +788,7 @@ def _casandre_nll(params, confidence, accuracy, evidence_strength):
     return -log_L
 
 
-def _meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True):
+def _meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True, verbose=False):
     """
     Fit meta-uncertainty per subject using a simplified CASANDRE model.
 
@@ -778,6 +800,7 @@ def _meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True):
     data : ConfData instance
     sdt_df : DataFrame with [subject, dprime, criterion, hit_rate, fa_rate]
     group_by_subject : bool
+    verbose : bool — show tqdm progress bar
 
     Returns
     -------
@@ -798,6 +821,9 @@ def _meta_uncertainty_fit(data, sdt_df=None, group_by_subject=True):
     sdt_dict = {row['subject']: row for _, row in sdt_df.iterrows()}
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='meta-uncertainty', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         sdt_row = sdt_dict.get(subject)
@@ -908,9 +934,9 @@ def _compute_all(data, include_model_based=True, verbose=True):
     # --- Step 1: Measures that only need accuracy + confidence ---
     if verbose:
         print("[1/6] Computing raw measures (Gamma, Phi, ΔConf)...")
-    gamma_df = _gamma(data)
-    phi_df = _phi(data)
-    dconf_df = _delta_conf(data)
+    gamma_df = _gamma(data, verbose=verbose)
+    phi_df = _phi(data, verbose=verbose)
+    dconf_df = _delta_conf(data, verbose=verbose)
 
     # AUC2 — use conf library
     if verbose:
@@ -926,7 +952,7 @@ def _compute_all(data, include_model_based=True, verbose=True):
     if has_sdt:
         if verbose:
             print(f"[3/6] Computing meta-d' (MLE fitting, {n_subj} subjects)...")
-        md_df = _meta_d(data)
+        md_df = _meta_d(data, verbose=verbose)
         if verbose:
             n_ok = md_df['meta_d'].notna().sum()
             print(f"       meta-d' fitted for {n_ok}/{n_subj} subjects")
@@ -941,7 +967,7 @@ def _compute_all(data, include_model_based=True, verbose=True):
         if verbose:
             print(f"[4/6] Simulating ideal SDT observer ({n_subj} subjects)...")
         sdt_df_for_expected = md_df[['subject', 'dprime', 'criterion']].copy()
-        expected_df = _sdt_expected(data, sdt_df_for_expected)
+        expected_df = _sdt_expected(data, sdt_df_for_expected, verbose=verbose)
         result = result.merge(expected_df, on='subject', how='outer')
 
         # --- Ratio measures ---
@@ -972,7 +998,7 @@ def _compute_all(data, include_model_based=True, verbose=True):
             if verbose:
                 print(f"[5/6] Fitting meta-noise model ({n_subj} subjects)...")
             try:
-                mn_df = _meta_noise_fit(data, sdt_df_for_expected)
+                mn_df = _meta_noise_fit(data, sdt_df_for_expected, verbose=verbose)
                 result = result.merge(mn_df, on='subject', how='outer')
             except Exception as e:
                 if verbose:
@@ -982,7 +1008,7 @@ def _compute_all(data, include_model_based=True, verbose=True):
             if verbose:
                 print(f"[6/6] Fitting CASANDRE model ({n_subj} subjects)...")
             try:
-                mu_df = _meta_uncertainty_fit(data, sdt_df_for_expected)
+                mu_df = _meta_uncertainty_fit(data, sdt_df_for_expected, verbose=verbose)
                 result = result.merge(
                     mu_df[['subject', 'meta_uncertainty']],
                     on='subject', how='outer'

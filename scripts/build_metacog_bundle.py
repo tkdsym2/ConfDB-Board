@@ -81,11 +81,13 @@ MODULES = [
 
 # Unified imports at the top of the bundle
 UNIFIED_IMPORTS = """\
+import sys
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from scipy.optimize import minimize
-from scipy.integrate import quad"""
+from scipy.integrate import quad
+from tqdm import tqdm"""
 
 HEADER = """\
 # metacog_bundle.py — Auto-generated single-file bundle for Pyodide injection

@@ -13,7 +13,7 @@ async function initPyodide() {
 
   await pyodide.loadPackage('micropip')
   const micropip = pyodide.pyimport('micropip')
-  await micropip.install(['pandas', 'scipy', 'matplotlib'])
+  await micropip.install(['pandas', 'scipy', 'matplotlib', 'tqdm'])
 
   // Pre-import common packages so first execution is faster
   await pyodide.runPythonAsync(`
@@ -22,6 +22,10 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+# Disable tqdm monitor thread (not supported in WebWorker)
+import tqdm
+tqdm.tqdm.monitor_interval = 0
 `)
 
   // Load the conf library bundle
@@ -98,19 +102,33 @@ def _post(msg_type, text):
     js.postMessage(to_js({'type': msg_type, 'text': text}, dict_converter=js.Object.fromEntries))
 
 class _LiveStdout:
-    """Streams stdout to the main thread line-by-line via postMessage."""
+    """Streams stdout to the main thread line-by-line via postMessage.
+    Handles \\r (carriage return) for tqdm progress bar updates."""
     def __init__(self):
         self._buffer = ''
+        self._cr_pending = False
     def write(self, text):
         if not text:
             return
         self._buffer += text
-        while '\\n' in self._buffer:
-            line, self._buffer = self._buffer.split('\\n', 1)
-            _post('stdout', line + '\\n')
+        while True:
+            idx_n = self._buffer.find('\\n')
+            idx_r = self._buffer.find('\\r')
+            if idx_n < 0 and idx_r < 0:
+                break
+            if idx_r >= 0 and (idx_n < 0 or idx_r < idx_n):
+                self._buffer = self._buffer[idx_r + 1:]
+                self._cr_pending = True
+            elif idx_n >= 0:
+                line = self._buffer[:idx_n]
+                self._buffer = self._buffer[idx_n + 1:]
+                msg_type = 'stdout-cr' if self._cr_pending else 'stdout'
+                _post(msg_type, line + '\\n')
+                self._cr_pending = False
     def flush(self):
         if self._buffer:
-            _post('stdout', self._buffer)
+            msg_type = 'stdout-cr' if self._cr_pending else 'stdout'
+            _post(msg_type, self._buffer)
             self._buffer = ''
 
 __stderr_capture__ = StringIO()

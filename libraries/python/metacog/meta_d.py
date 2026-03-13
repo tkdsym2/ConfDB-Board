@@ -5,10 +5,12 @@ meta-d' is the d' value that provides the best fit to the observed Type 2 ROC,
 under the assumption that confidence ratings reflect an ideal SDT observer.
 """
 
+import sys
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from scipy.optimize import minimize
+from tqdm import tqdm
 
 
 def prepare_ratings(sub_df, stim_col, resp_col, conf_col):
@@ -212,7 +214,7 @@ def fit_meta_d_MLE(nR_S1, nR_S2):
     }
 
 
-def meta_d(data, group_by_subject=True):
+def meta_d(data, group_by_subject=True, verbose=False):
     """
     Compute meta-d' per subject via MLE.
 
@@ -234,6 +236,9 @@ def meta_d(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc="meta-d'", total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         if group[conf_col].nunique() < 2:

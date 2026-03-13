@@ -566,7 +566,7 @@ export default function Sandbox() {
                 </span>
               )}
               {consoleItems.map((item, i) => {
-                if (item.type === 'stdout') {
+                if (item.type === 'stdout' || item.type === 'stdout-cr') {
                   return <pre key={i} className="whitespace-pre-wrap">{item.text}</pre>
                 }
                 if (item.type === 'stderr') {

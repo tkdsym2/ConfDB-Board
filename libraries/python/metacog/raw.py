@@ -1,10 +1,12 @@
 """Raw metacognitive measures: Gamma, Phi, ΔConf."""
 
+import sys
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 
-def gamma(data, group_by_subject=True):
+def gamma(data, group_by_subject=True, verbose=False):
     """
     Goodman-Kruskal gamma correlation between confidence and accuracy.
 
@@ -21,6 +23,9 @@ def gamma(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='Gamma', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         confidence = group[conf_col].values
@@ -51,7 +56,7 @@ def gamma(data, group_by_subject=True):
     return pd.DataFrame(results)
 
 
-def phi(data, group_by_subject=True):
+def phi(data, group_by_subject=True, verbose=False):
     """
     Pearson correlation (Phi) between confidence and accuracy.
 
@@ -64,6 +69,9 @@ def phi(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='Phi', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         confidence = group[conf_col].values.astype(float)
@@ -79,7 +87,7 @@ def phi(data, group_by_subject=True):
     return pd.DataFrame(results)
 
 
-def delta_conf(data, group_by_subject=True):
+def delta_conf(data, group_by_subject=True, verbose=False):
     """
     ΔConf: difference in mean confidence between correct and error trials.
 
@@ -94,6 +102,9 @@ def delta_conf(data, group_by_subject=True):
 
     results = []
     groups = df.groupby(subj) if group_by_subject else [('all', df)]
+    if verbose:
+        n_total = df[subj].nunique() if group_by_subject else 1
+        groups = tqdm(groups, desc='ΔConf', total=n_total, file=sys.stdout)
 
     for subject, group in groups:
         accuracy = group[acc_col].astype(int).values

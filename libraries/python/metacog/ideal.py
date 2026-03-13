@@ -6,9 +6,11 @@ expected AUC2, Gamma, Phi, and ΔConf under this ideal model, which serve
 as the denominator for Ratio measures and the subtrahend for Diff measures.
 """
 
+import sys
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
+from tqdm import tqdm
 
 
 def _simulate_ideal_observer(dprime, crit_position, n_conf_levels, n_samples=50000):
@@ -120,7 +122,7 @@ def _simulate_ideal_observer(dprime, crit_position, n_conf_levels, n_samples=500
     }
 
 
-def sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000):
+def sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000, verbose=False):
     """
     Compute SDT-expected metacognitive measures per subject.
 
@@ -134,6 +136,7 @@ def sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000):
              If None, will be computed internally using conf.dprime().
     group_by_subject : bool
     n_samples : int — simulation samples per stimulus class
+    verbose : bool — show tqdm progress bar
 
     Returns
     -------
@@ -147,7 +150,10 @@ def sdt_expected(data, sdt_df=None, group_by_subject=True, n_samples=50000):
     n_conf_levels = data.raw[data.col('confidence')].nunique()
 
     results = []
-    for _, row in sdt_df.iterrows():
+    rows_iter = sdt_df.iterrows()
+    if verbose:
+        rows_iter = tqdm(rows_iter, desc='SDT expected', total=len(sdt_df), file=sys.stdout)
+    for _, row in rows_iter:
         d = row['dprime']
         c = row.get('criterion', 0.0)
 
