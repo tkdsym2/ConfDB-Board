@@ -29,7 +29,7 @@ ConfDBBoard/
 │   │   ├── hooks/
 │   │   │   ├── useDatasets.js        # useDatasets, useTagCounts, useDataset, useDatasetWithTags, useDatasetTags
 │   │   │   ├── useAnalyses.js        # useAnalyses, useAnalysis, getAnalysisTagIds, datasetSupportsAnalysis
-│   │   │   └── useEngine.js          # Pyodide worker lifecycle (idle→loading→ready→running)
+│   │   │   └── useEngine.js          # Pyodide worker lifecycle (idle→loading→ready→running), userGlobals tracking
 │   │   ├── lib/
 │   │   │   └── supabase.js           # Supabase client + supabaseUrl export
 │   │   ├── pages/
@@ -37,7 +37,7 @@ ConfDBBoard/
 │   │   │   ├── Datasets.jsx          # Catalog: search + domain/task/tag filters, two-row layout per dataset
 │   │   │   ├── DatasetDetail.jsx     # Metadata, paper title/DOI link, tags, download/sandbox buttons
 │   │   │   ├── Analyses.jsx          # Analysis-first entry: cards with compatible datasets
-│   │   │   ├── Sandbox.jsx           # Dual-tab editor + split output + template/custom scripts
+│   │   │   ├── Sandbox.jsx           # Dual-tab editor + split output + template/custom scripts + multi-dataset loader + manual
 │   │   │   └── Feedback.jsx          # Feedback form with subject dropdown, sidebar, Resend email
 │   │   ├── App.jsx                   # Data router (createBrowserRouter + RouterProvider)
 │   │   ├── main.jsx                  # Entry: QueryClientProvider wrapping App
@@ -295,10 +295,11 @@ Worker location: `frontend/public/workers/pyodide-worker.js`
 
 **Inbound messages** (main → worker):
 - `{ type: 'init' }` — load Pyodide, install packages, load conf_bundle.py and metacog_bundle.py
-- `{ type: 'load-dataset', csvUrl }` — fetch CSV, create `df` and `data = conf.load(df)`
+- `{ type: 'load-dataset', csvUrl }` — fetch CSV, create `df` and `data = conf.load(df)`, capture baseline globals
+- `{ type: 'load-extra-dataset', csvUrl, dfVar, dataVar }` — fetch CSV into user-specified variable names (e.g. `df2`, `data2`)
 - `{ type: 'reload-conf', code }` — re-execute conf library code (for live editing)
 - `{ type: 'reload-metacog', code }` — re-execute metacog library code (for live editing)
-- `{ type: 'execute', code }` — run user code with stdout/stderr/plot capture
+- `{ type: 'execute', code }` — run user code with stdout/stderr/plot capture + collect user-defined globals
 
 **Outbound messages** (worker → main):
 - `{ type: 'status', status, message }` — status: `loading` | `ready` | `running`
@@ -306,9 +307,12 @@ Worker location: `frontend/public/workers/pyodide-worker.js`
 - `{ type: 'stdout-cr', text }` — carriage-return output (replaces last `stdout-cr` entry; used by tqdm progress bars)
 - `{ type: 'stderr', text }` — errors
 - `{ type: 'plot', data }` — base64 PNG string
+- `{ type: 'globals', variables }` — array of `{name, type, repr}` for user-defined globals (after each execute)
 - `{ type: 'result', success }` — execution complete
 
 **Globals available to user code**: `df`, `data`, `conf`, `metacog`, `pd`, `np`, `plt`, `tqdm`
+
+**Variable persistence**: Python globals persist across all `execute()` calls within a session. Variables defined in one script (e.g. Explore) are accessible when switching to another template (e.g. Basic Descriptive Statistics). After `loadDataset()`, the worker captures `__baseline_globals__`; after each `execute()`, it diffs current globals against the baseline to identify user-defined variables (filtering out `_`-prefixed names and modules) and sends them via the `globals` message.
 
 **Initialization**: After installing packages, the worker pre-imports pandas/numpy/matplotlib and disables tqdm's monitor thread (`tqdm.tqdm.monitor_interval = 0`) to avoid WebWorker threading errors.
 
@@ -322,7 +326,7 @@ Plot capture: `plt.show()` is overridden per-execution to collect figures. After
 | `/datasets` | Datasets | Catalog with search, domain/task/tag filters, two-row layout |
 | `/datasets/:id` | DatasetDetail | Metadata, paper title/DOI, tags, download CSV, open in sandbox |
 | `/analyses` | Analyses | Analysis cards with compatible dataset lists |
-| `/sandbox` | Sandbox | Dual-tab editor + split output panels |
+| `/sandbox` | Sandbox | Editor + split output + multi-dataset loader + manual |
 | `/feedback` | Feedback | Feedback form with subject dropdown, sidebar info, email via Resend |
 
 Router uses `createBrowserRouter` + `RouterProvider` (data router pattern, required for `useBlocker`).
@@ -363,15 +367,21 @@ Sandbox accepts query params: `?dataset={id}&analysis={id}`
 
 ### Sandbox Features
 
+**Top bar:**
+- Dataset name, domain badge, "Change dataset" link
+- Collapsible "Import additional dataset" section below dataset name (see Multi-dataset loader below)
+
 **Editor panel (left 3/5):**
 - File tabs: `main.py` (user script), `conf.py` (conf library source), and `metacog.py` (metacog library source)
 - VS Code-style tab bar with blue top-border accent on active tab
 - Amber dot indicator on modified tabs
 - conf.py and metacog.py always viewable/editable; changes are reloaded in Pyodide on Run
 - Reset button for conf.py/metacog.py to restore original
+- **Action buttons in tab bar** (right side): Saved flash, StatusBadge (dark theme), Clear, Manual (book icon), Run — all styled for dark background
 
 **Output panel (right 2/5):**
-- Split into **Console** (stdout/stderr/result) and **Plots** (base64 PNGs)
+- Split into **Variables** (collapsible, user-defined globals) + **Console** (stdout/stderr/result) + **Plots** (base64 PNGs)
+- Variables panel shows name, type, and brief repr for each user-defined global; updates after each execution
 - Console takes full height when no plots; 50/50 split when plots exist
 - Each section independently scrollable
 
@@ -381,13 +391,30 @@ Sandbox accepts query params: `?dataset={id}&analysis={id}`
 - `+` button creates a new script directly (inline name input → auto-selected in editor)
 - Delete via `x` badge on hover (with confirmation)
 
+**Multi-dataset loader:**
+- Collapsible panel in top bar below dataset name
+- Searchable dropdown to pick additional datasets (filters by ID, author, paper title)
+- Two input fields for custom variable names (DataFrame var e.g. `df2`, ConfData var e.g. `data2`)
+- Validates Python identifier syntax, prevents duplicate/conflicting names
+- Auto-increments variable names after each load
+- Loaded extras shown as compact badges; worker creates globals via `load-extra-dataset` message
+
+**Sandbox Manual:**
+- Book icon button in editor tab bar opens a modal
+- Documents: pre-loaded globals, conf API, metacog API, importing datasets, variable persistence, plots, keyboard shortcuts, editor tabs
+- Closes via Escape, clicking outside, or X button
+
+**Keyboard shortcuts:**
+- Cmd+S / Ctrl+S: saves checkpoint (clears dirty dot), prevents browser save dialog
+- Cmd+R / Ctrl+R: runs script, prevents browser page reload
+- `handleRunRef` pattern: ref always points to latest `handleRun` callback so the keyboard event listener doesn't re-register on every code change
+
 **Script preservation:**
 - `scriptsMapRef` stores code per built-in template; custom scripts stored in `customScripts` state
 - Switching templates saves current code, restores previous edits
-- Cmd+S / Ctrl+S: saves checkpoint (clears dirty dot), prevents browser save dialog
 - For built-in templates: Cmd+S does NOT clear the leave guard (code still differs from original template)
 - For custom scripts: Cmd+S updates the leave guard baseline (user owns the template)
-- "Saved" flash indicator appears briefly in top bar
+- "Saved" flash indicator appears briefly in tab bar
 
 **Navigation guards:**
 - `beforeunload` event for browser reload/close
@@ -396,6 +423,10 @@ Sandbox accepts query params: `?dataset={id}&analysis={id}`
 - Two-layer dirty tracking:
   - `codeSaved` / `confSaved`: Cmd+S checkpoint (tab dirty dots)
   - `codeInitial` / `confInitial`: original template (leave guard)
+
+**StatusBadge component:**
+- Accepts `dark` prop for dark-themed tab bar variant (dark translucent backgrounds)
+- Light variant used elsewhere (if needed)
 
 ## Paper Info Pipeline
 
